@@ -5,12 +5,15 @@ import { prisma } from "@/lib/prisma";
 
 // Configure email transporter
 const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || "",
-  port: parseInt(process.env.EMAIL_PORT || "587"),
-  secure: process.env.EMAIL_SECURE === "true",
+  service: 'gmail',  // Instead of setting host manually
   auth: {
     user: process.env.EMAIL_USER || "",
-    pass: process.env.EMAIL_PASS || ""
+    pass: process.env.EMAIL_PASS || ""  // This should be your App Password
+  },
+  secure: true,  // Use SSL
+  // Required for Gmail from localhost
+  tls: {
+    rejectUnauthorized: false
   }
 });
 
@@ -31,7 +34,7 @@ export async function POST(req: NextRequest, { params }: EmailParams) {
       );
     }
     
-    const { id } = params;
+    const { id } = await params;
     
     // Get the interview
     const interview = await prisma.interview.findUnique({

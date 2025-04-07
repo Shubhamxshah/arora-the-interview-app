@@ -8,7 +8,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Mic, MicOff, Video, VideoOff, Phone, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
-import { toast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 
 enum InterviewStep {
   Setup = 'setup',
@@ -134,11 +134,7 @@ export default function InterviewPage() {
       } catch (err: any) {
         console.error("Error accessing media devices:", err);
         setError(err.message || "Failed to access camera and microphone");
-        toast({
-          title: "Media Access Error",
-          description: err.message || "Could not access your camera and microphone",
-          variant: "destructive",
-        });
+        toast.error("Media Access Error, Could not access your camera and microphone");
       }
     };
     
@@ -176,11 +172,7 @@ export default function InterviewPage() {
       }
     } catch (err: any) {
       console.error("Error setting up media stream:", err);
-      toast({
-        title: "Media Error",
-        description: err.message || "Could not access selected devices",
-        variant: "destructive",
-      });
+      toast.error( "Media Error, Could not access selected devices");
     }
   };
   
@@ -225,11 +217,7 @@ export default function InterviewPage() {
   // Function to start the interview
   const startInterview = async () => {
     if (!interview || !interview.interviewVideoUrl) {
-      toast({
-        title: "Error",
-        description: "Interview video not found",
-        variant: "destructive",
-      });
+      toast.error("Error Interview video not found");
       return;
     }
     
