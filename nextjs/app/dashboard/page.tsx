@@ -1,79 +1,89 @@
+// app/page.tsx
 'use client'
 
-import { useState, useRef } from "react";
-import { Search, Upload, Clock, Mail, Briefcase, User, Video } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Search, Clock, Mail, Briefcase, User, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { FilePond, registerPlugin } from 'react-filepond';
+import 'filepond/dist/filepond.min.css';
+import FilePondPluginFileValidateType from 'filepond-plugin-file-validate-type';
+import { createInterview } from "@/app/actions/interviewActions";
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
+import { Interview, ProcessingState } from '@prisma/client';
 import Image from "next/image";
-import axios from "axios";
 
-interface AvatarObject {
+// Register FilePond plugins
+registerPlugin(FilePondPluginFileValidateType);
+
+interface Avatar {
   avatar_id: string;
-  title: string;
-  thumbnail: string;
+  title?: string;
+  thumbnail?: string;
   status: string;
-  base_video: string;
-  avatar_webhook?: {
-    webhook_url: string;
-  }; 
-  created_at: string;
-}
-
-interface APIResponse {
-  total_avatars: number;
-  avatars_list: AvatarObject[];
-}
-
-interface CloudinaryResponse {
-  secure_url: string;
-  public_id: string;
 }
 
 export default function Page() {
+  const { data: session } = useSession();
+  const router = useRouter();
+  
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [avatars, setAvatars] = useState<AvatarObject[]>([]);
-  const [selectedAvatar, setSelectedAvatar] = useState(null);
+  const [avatars, setAvatars] = useState<Avatar[]>([]);
+  const [selectedAvatar, setSelectedAvatar] = useState<Avatar | null>(null);
   const [timestamp, setTimestamp] = useState("00:00:00");
   const [jobDescription, setJobDescription] = useState("");
   const [candidateEmail, setCandidateEmail] = useState("");
   const [currentStep, setCurrentStep] = useState("select-avatar");
-  const resumeInputRef = useRef(null);
-  const [resumeFile, setResumeFile] = useState(null);
-  const [createdVideos, setCreatedVideos] = useState([]);
-  const apiKey = process.env.NEXT_PUBLIC_GANAI_API_KEY || "";
-  const ganai_url = process.env.NEXT_PUBLIC_GANAI_BACKEND_URL || "";
+  const [resumeText, setResumeText] = useState("");
+  const [pond, setPond] = useState<any>(null);
+  const [interviews, setInterviews] = useState<Interview[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+
   // Fetch avatars when dialog opens
   const fetchAvatars = async () => {
     setIsLoading(true);
     try {
-      const response = await axios.get<APIResponse>(`${ganai_url}/v1/avatars/list`, {
-        headers: {
-          'ganos-api-key': apiKey
-        }
-      })
-
-      if (response.data?.avatars_list) {
-        setAvatars(response.data.avatars_list)
-      } else {
-        setAvatars([])
-        console.log("no avatars fetched from the api call")
-      }
-    } catch (err) {
-      console.log({error: err})
-      toast.error("failed to fetch avatars, please try again later")
+      const response = await fetch('/api/avatars/list');
+      const data = await response.json();
+      setAvatars(data.avatars || []);
+    } catch (error) {
+      console.error("Error fetching avatars:", error);
+      toast.error("Failed to fetch avatars. Please try again.");
     } finally {
       setIsLoading(false);
     }
   };
+
+  // Fetch interviews on component mount and periodically
+  const fetchInterviews = async () => {
+    try {
+      const response = await fetch('/api/interviews/list');
+      const data = await response.json();
+      setInterviews(data.interviews || []);
+    } catch (error) {
+      console.error("Error fetching interviews:", error);
+    }
+  };
+
+  // Initialize data on component mount
+  useEffect(() => {
+    fetchInterviews();
+    
+    // Set up polling for interview updates every 30 seconds
+    const intervalId = setInterval(fetchInterviews, 30000);
+    
+    return () => clearInterval(intervalId);
+  }, []);
 
   const handleDialogOpen = (open: boolean) => {
     setIsDialogOpen(open);
@@ -81,19 +91,13 @@ export default function Page() {
       fetchAvatars();
       setCurrentStep("select-avatar");
       setSelectedAvatar(null);
-      setResumeFile(null);
+      setResumeText("");
       setJobDescription("");
       setCandidateEmail("");
       setTimestamp("00:00:00");
-    }
-  };
-
-  const handleResumeUpload = (e) => {
-    const file = e.target.files[0];
-    if (file && file.type === "application/pdf") {
-      setResumeFile(file);
-    } else {
-      toast.error("Please upload a PDF file for the resume");
+      if (pond) {
+        pond.removeFiles();
+      }
     }
   };
 
@@ -105,157 +109,109 @@ export default function Page() {
     }
   };
 
-  const parseResumeWithChatGPT = async (resumeText, jobDesc) => {
-    try {
-      // Mock API call to ChatGPT - replace with your actual API integration
-      // This would be where you call ChatGPT API to analyze the resume and job description
-      console.log("Parsing resume with ChatGPT...");
-      
-      // Simulate a ChatGPT response for demonstration
-      // In reality, you would send the resume text and job description to ChatGPT
-      return [
-        "Hi there! Hope you're well. Could you start by introducing yourself and sharing a bit about your background?",
-        `Based on your experience with ${resumeText.includes("React") ? "React" : "software development"}, can you explain a challenging project you worked on?`,
-        `I see you have experience with ${resumeText.includes("API") ? "API integration" : "backend development"}. How do you approach testing and documentation?`,
-        `The role requires ${jobDesc.includes("team") ? "teamwork" : "collaboration"}. Can you share an example of how you've worked effectively in a team?`,
-        "That's all we had for today. Congratulations on completing the interview successfully! We'll be in touch soon."
-      ];
-    } catch (error) {
-      console.error("Error parsing resume:", error);
-      throw new Error("Failed to parse resume and generate questions");
-    }
-  };
-
-  const createAvatarVideo = async (avatarId: string, text: string) => {
-    try {
-      const options = {
-        method: 'POST',
-        headers: {
-          'ganos-api-key': apiKey,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          avatar_id: avatarId,
-          title: `Interview Question ${new Date().toISOString()}`,
-          text: text,
-          audio_url: ""
-        })
-      };
-
-      const response = await fetch('https://os.gan.ai/v1/avatars/create_video', options);
-      const data = await response.json();
-      console.log("Video created:", data);
-      return data;
-    } catch (error) {
-      console.error("Error creating avatar video:", error);
-      throw new Error("Failed to create avatar video");
-    }
-  };
-
-  const listCreatedVideos = async () => {
-    try {
-      const options = { method: 'GET', headers: { 'ganos-api-key': apiKey } };
-      const response = await fetch('https://os.gan.ai/v1/avatars/list_inferences', options);
-      const data = await response.json();
-      return data.data || [];
-    } catch (error) {
-      console.error("Error listing videos:", error);
-      throw new Error("Failed to list created videos");
-    }
-  };
-
-  const extractNoddingClip = async (videoUrl: string) => {
-    // This would run on the server side with ffmpeg
-    // For client-side demo, we'll just log what would happen
-    console.log(`Would run: ffmpeg -ss ${timestamp} -i ${videoUrl} -t 10 -c copy nodding_clip.mp4`);
-    
-    // In reality, you'd use a server endpoint that runs ffmpeg
-    // Return a placeholder for the nodding clip URL
-    return "nodding_clip.mp4";
-  };
-
-  const mergeVideos = async (questionVideos, noddingClip) => {
-    // This would run on the server side with ffmpeg
-    // For client-side demo, we'll just log the concept
-    console.log("Would merge videos with nodding clips in between");
-    
-    // In reality, you'd use a server endpoint that runs ffmpeg to:
-    // 1. Create a 30-second clip by looping the nodding clip 3 times
-    // 2. Merge question videos with the nodding clip in between
-    // Return a placeholder for the final video URL
-    return "final_interview_video.mp4";
-  };
-
-  const uploadToCloudinary = async (videoFile) => {
-    // This would upload to Cloudinary
-    console.log("Would upload final video to Cloudinary");
-    
-    // Return a placeholder for the Cloudinary URL
-    return "https://cloudinary.com/your-video-url";
-  };
-
-  const sendEmailToCandidate = async (email, videoUrl) => {
-    // This would send an email to the candidate
-    console.log(`Would send email to ${email} with video URL: ${videoUrl}`);
-    
-    // In reality, you'd use a mail service like SendGrid, AWS SES, etc.
-    return true;
-  };
-
   const handleSubmit = async () => {
-    if (!selectedAvatar || !resumeFile || !jobDescription || !candidateEmail || !timestamp) {
-      toast("Missing Information", {
-        description: "Please complete all fields before submitting"
-      });
+    if (!selectedAvatar || !resumeText || !jobDescription || !candidateEmail || !timestamp) {
+      toast.error("Please complete all fields before submitting");
+      return;
+    }
+
+    if (!session?.user?.email) {
+      toast.error("You must be logged in to create interviews");
       return;
     }
 
     setIsLoading(true);
     try {
-      // 1. Read resume file
-      const resumeText = await new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target.result);
-        reader.readAsText(resumeFile);
+      // Create interview using server action
+      const result = await createInterview({
+        avatarId: selectedAvatar.avatar_id,
+        resumeText,
+        jobDescription,
+        candidateEmail,
+        timestamp,
+        creatorEmail: session.user.email
       });
 
-      // 2. Generate questions with ChatGPT
-      const questions = await parseResumeWithChatGPT(resumeText, jobDescription);
-
-      // 3. Create avatar videos for each question
-      const videoPromises = questions.map(q => createAvatarVideo(selectedAvatar.avatar_id, q));
-      const videoResponses = await Promise.all(videoPromises);
-
-      // 4. Wait a bit for videos to process and then list them
-      // In a real app, you might implement a polling mechanism or webhook
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      const createdVideosList = await listCreatedVideos();
-      setCreatedVideos(createdVideosList.filter(v => 
-        videoResponses.some(r => r.inference_id === v.inference_id)
-      ));
-
-      // 5. Extract nodding clip from timestamp
-      const noddingClip = await extractNoddingClip("original_video.mp4");
-
-      // 6. Merge videos with nodding clips in between
-      const finalVideo = await mergeVideos(createdVideosList, noddingClip);
-
-      // 7. Upload to Cloudinary
-      const cloudinaryUrl = await uploadToCloudinary(finalVideo);
-
-      // 8. Send email to candidate
-      await sendEmailToCandidate(candidateEmail, cloudinaryUrl);
-
-      toast.success("Interview invite created and email sent to candidate");
-
-      setIsDialogOpen(false);
-    } catch (error) {
+      if (result.success) {
+        toast("Interview creation process has started. You'll be notified when it's ready");
+        
+        // Refresh interviews list
+        await fetchInterviews();
+        
+        // Close dialog
+        setIsDialogOpen(false);
+      } else {
+        throw new Error(result.error || "Failed to create interview");
+      }
+    } catch (error: any) {
       console.error("Error creating interview invite:", error);
-      toast.error("Failed to create interview invite");
+      toast("Failed to create interview invite");
     } finally {
       setIsLoading(false);
     }
   };
+
+  const getProcessingStateLabel = (state: ProcessingState): { text: string; color: string } => {
+    switch (state) {
+      case 'CREATING_QUESTIONS':
+        return { text: 'Creating Questions', color: 'bg-blue-100 text-blue-700' };
+      case 'GENERATING_VIDEOS':
+        return { text: 'Generating Videos', color: 'bg-blue-100 text-blue-700' };
+      case 'PROCESSING_VIDEOS':
+        return { text: 'Processing Videos', color: 'bg-blue-100 text-blue-700' };
+      case 'MERGING_VIDEOS':
+        return { text: 'Merging Videos', color: 'bg-blue-100 text-blue-700' };
+      case 'UPLOADING_VIDEO':
+        return { text: 'Uploading Video', color: 'bg-blue-100 text-blue-700' };
+      case 'READY_FOR_CANDIDATE':
+        return { text: 'Ready for Candidate', color: 'bg-purple-100 text-purple-700' };
+      case 'WAITING_FOR_CANDIDATE':
+        return { text: 'Waiting for Candidate', color: 'bg-yellow-100 text-yellow-700' };
+      case 'CANDIDATE_COMPLETED':
+        return { text: 'Candidate Completed', color: 'bg-orange-100 text-orange-700' };
+      case 'PROCESSING_CANDIDATE_VIDEO':
+        return { text: 'Processing Recording', color: 'bg-orange-100 text-orange-700' };
+      case 'GENERATING_SUMMARY':
+        return { text: 'Generating Summary', color: 'bg-orange-100 text-orange-700' };
+      case 'COMPLETED':
+        return { text: 'Completed', color: 'bg-green-100 text-green-700' };
+      case 'FAILED':
+        return { text: 'Failed', color: 'bg-red-100 text-red-700' };
+      default:
+        return { text: 'Unknown', color: 'bg-gray-100 text-gray-700' };
+    }
+  };
+
+  const sendInterviewEmail = async (interviewId: string) => {
+    try {
+      const response = await fetch(`/api/interviews/${interviewId}/send-email`, {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to send email');
+      }
+      
+      toast.success("Interview invitation has been sent to the candidate");
+      
+      // Refresh interviews
+      fetchInterviews();
+    } catch (error) {
+      toast.error("Failed to send email. Please try again.");
+    }
+  };
+
+  const viewInterviewSummary = (interview: Interview) => {
+    if (interview.interviewSummary) {
+      router.push(`/interviews/${interview.id}/summary`);
+    } else {
+      toast.error("The interview summary is not yet available");
+    }
+  };
+
+  const filteredInterviews = interviews.filter(interview => 
+    interview.candidateEmail.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const avatarTabs = [
     { value: "select-avatar", label: "1. Select Avatar" },
@@ -273,6 +229,8 @@ export default function Page() {
               className="w-xl"
               type="search"
               placeholder="search invites..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
             />
             <Search className="bg-muted relative right-10 rounded-tr-md rounded-br-md h-9 w-10" />
           </div>
@@ -323,7 +281,9 @@ export default function Page() {
                               {avatar.thumbnail ? (
                                 <Image 
                                   src={avatar.thumbnail} 
-                                  alt={avatar.title || "Avatar"} 
+                                  alt={avatar.title || "Avatar"}
+                                  height="100"
+                                  width="100"
                                   className="w-full aspect-video object-cover rounded-md"
                                 />
                               ) : (
@@ -367,19 +327,41 @@ export default function Page() {
                           <Label htmlFor="resumeUpload" className="flex items-center gap-2">
                             <Briefcase className="h-4 w-4" /> Candidate Resume (PDF)
                           </Label>
-                          <div className="mt-1 flex items-center gap-2">
-                            <Input
-                              id="resumeUpload"
-                              type="file"
-                              accept=".pdf"
-                              ref={resumeInputRef}
-                              onChange={handleResumeUpload}
-                              className="flex-1"
+                          <div className="mt-1">
+                            <FilePond
+                              ref={(ref: any) => setPond(ref)}
+                              allowMultiple={false}
+                              acceptedFileTypes={['application/pdf']}
+                              labelIdle='Drag & Drop resume or <span class="filepond--label-action">Browse</span>'
+                              name="filepond"
+                              server={{
+                                process: {
+                                  url: '/api/upload',
+                                  method: 'POST',
+                                  withCredentials: false,
+                                  onload: (response: string) => {
+                                    console.log("upload response", response)
+                                    setResumeText(JSON.parse(response));
+                                    return response;
+                                  },
+                                  onerror: (error: any) => {
+                                    toast.error( "Failed to parse resume. Please try another file.");
+                                    return error;
+                                  }
+                                }, 
+                                fetch: null, 
+                                revert: null, 
+                              }}
+                              onremovefile={() => {
+                                setResumeText("");
+                              }}
                             />
-                            {resumeFile && (
-                              <span className="text-xs text-green-500">
-                                {resumeFile.name}
-                              </span>
+                            {resumeText && (
+                              <div className="mt-2 p-2 bg-muted rounded-md">
+                                <span className="text-xs text-green-500">
+                                  Resume successfully parsed! ({resumeText.length} characters)
+                                </span>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -439,7 +421,7 @@ export default function Page() {
                       </Button>
                       <Button 
                         onClick={() => setCurrentStep("review")}
-                        disabled={!resumeFile || !jobDescription || !candidateEmail || !timestamp || isLoading}
+                        disabled={!resumeText || !jobDescription || !candidateEmail || !timestamp || isLoading}
                       >
                         Next: Review
                       </Button>
@@ -458,8 +440,8 @@ export default function Page() {
                           <p className="text-sm">{selectedAvatar?.title || selectedAvatar?.avatar_id.slice(0, 8)}</p>
                         </div>
                         <div>
-                          <h4 className="text-sm font-medium text-muted-foreground">Resume File</h4>
-                          <p className="text-sm">{resumeFile?.name}</p>
+                          <h4 className="text-sm font-medium text-muted-foreground">Resume</h4>
+                          <p className="text-sm">PDF parsed ({resumeText?.length} characters)</p>
                         </div>
                         <div>
                           <h4 className="text-sm font-medium text-muted-foreground">Candidate Email</h4>
@@ -479,7 +461,7 @@ export default function Page() {
                       <div>
                         <h4 className="text-sm font-medium text-muted-foreground">Process Steps</h4>
                         <ul className="text-sm list-disc list-inside">
-                          <li>Generate 5 interview questions based on resume and job description</li>
+                          <li>Generate 5 interview questions using Groq AI</li>
                           <li>Create avatar videos for each question</li>
                           <li>Extract nodding clip from timestamp</li>
                           <li>Merge videos with nodding clips in between</li>
@@ -520,12 +502,68 @@ export default function Page() {
       </header>
 
       <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+        <h2 className="text-2xl font-semibold">Interview Invites</h2>
         <div className="grid auto-rows-min gap-4 md:grid-cols-3">
-          <div className="aspect-video rounded-xl bg-muted/50" />
-          <div className="aspect-video rounded-xl bg-muted/50" />
-          <div className="aspect-video rounded-xl bg-muted/50" />
+          {filteredInterviews.length > 0 ? (
+            filteredInterviews.map(interview => (
+              <Card key={interview.id} className="overflow-hidden">
+                <div className="aspect-video bg-muted">
+                  {interview.interviewVideoUrl ? (
+                    <video 
+                      src={interview.interviewVideoUrl} 
+                      poster={interview.interviewThumbnailUrl || undefined}
+                      className="w-full h-full object-cover"
+                      controls
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Video className="h-12 w-12 opacity-30" />
+                    </div>
+                  )}
+                </div>
+                <CardContent className="p-4">
+                  <h3 className="font-medium">{interview.candidateEmail}</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Created: {new Date(interview.createdAt).toLocaleDateString()}
+                  </p>
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs ${
+                      getProcessingStateLabel(interview.processingState).color
+                    }`}>
+                      {getProcessingStateLabel(interview.processingState).text}
+                    </span>
+                    
+                    <div className="flex gap-2">
+                      {interview.processingState === 'READY_FOR_CANDIDATE' && !interview.emailSent && (
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => sendInterviewEmail(interview.id)}
+                        >
+                          Send Email
+                        </Button>
+                      )}
+                      
+                      {interview.processingState === 'COMPLETED' && (
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => viewInterviewSummary(interview)}
+                        >
+                          View Summary
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          ) : (
+            <div className="col-span-3 p-8 text-center text-muted-foreground">
+              No interview invites found. Create a new invite to get started.
+            </div>
+          )}
         </div>
-        <div className="min-h-[100vh] flex-1 rounded-xl bg-muted/50 md:min-h-min" />
       </div>
     </>
   );

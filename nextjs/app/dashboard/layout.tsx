@@ -15,11 +15,11 @@ export default function DashboardLayout({
       <SidebarProvider>
       <SessionProvider>
         <AppSidebar />
-      </SessionProvider>
       <SidebarInset>
         {children}
         <Toaster />
       </SidebarInset>
+      </SessionProvider>
     </SidebarProvider>
   );
 }

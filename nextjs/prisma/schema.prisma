@@ -1,3 +1,4 @@
+// prisma/schema.prisma
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -15,6 +16,7 @@ model User {
   image         String?
   accounts      Account[]
   sessions      Session[]
+  interviews    Interview[]     // Relation to interviews created by this user
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -50,5 +52,53 @@ model Session {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
- 
- 
+
+model Interview {
+  id                String           @id @default(cuid())
+  creatorId         String
+  avatarId          String
+  candidateEmail    String
+  jobDescription    String           @db.Text
+  resumeText        String           @db.Text
+  timestamp         String
+  questions         String[]
+  
+  // Video related fields
+  processingState   ProcessingState  @default(CREATING_QUESTIONS)
+  interviewVideoUrl String?
+  interviewThumbnailUrl String?
+  
+  // Candidate interview related fields
+  candidateToken    String           @unique @default(cuid())
+  candidateJoined   Boolean          @default(false)
+  candidateVideoUrl String?
+  candidateTranscript String?        @db.Text
+  interviewSummary  String?          @db.Text
+  
+  // Email tracking
+  emailSent         Boolean          @default(false)
+  emailSentAt       DateTime?
+  
+  // Timestamps
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  completedAt       DateTime?
+  
+  // Relations
+  creator           User             @relation(fields: [creatorId], references: [id])
+}
+
+enum ProcessingState {
+  CREATING_QUESTIONS
+  GENERATING_VIDEOS
+  PROCESSING_VIDEOS
+  MERGING_VIDEOS
+  UPLOADING_VIDEO
+  READY_FOR_CANDIDATE
+  WAITING_FOR_CANDIDATE
+  CANDIDATE_COMPLETED
+  PROCESSING_CANDIDATE_VIDEO
+  GENERATING_SUMMARY
+  COMPLETED
+  FAILED
+}

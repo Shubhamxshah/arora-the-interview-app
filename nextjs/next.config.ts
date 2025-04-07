@@ -6,7 +6,8 @@ const nextConfig: NextConfig = {
     domains: [
       'd39st1yc0t52gi.cloudfront.net'
     ]
-  }
+  }, 
+  serverExternalPackages : ['pdf2json'],
 };
 
 export default nextConfig;
