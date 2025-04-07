@@ -9,6 +9,7 @@ import { v2 as cloudinary } from "cloudinary";
 import { ProcessingState } from '@prisma/client';
 import { auth }  from "@/auth"
 import { prisma } from "@/lib/prisma"
+import axios from "axios";
 
 // Configure cloudinary
 cloudinary.config({
@@ -97,6 +98,10 @@ async function updateInterviewState(interviewId: string, state: ProcessingState)
 
 // Main processing pipeline for the interview
 async function processInterview(interviewId: string) {
+  // Create a unique processing ID for this interview
+  const processId = `process_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+  console.log(`[${processId}] Starting interview processing for interview ${interviewId}`);
+  
   try {
     // Get the interview details
     const interview = await prisma.interview.findUnique({
@@ -107,6 +112,7 @@ async function processInterview(interviewId: string) {
       throw new Error("Interview not found");
     }
 
+    console.log(`[${processId}] Generating questions`);
     // Step 1: Generate questions
     const questions = await generateInterviewQuestions(
       interview.resumeText,
@@ -122,31 +128,37 @@ async function processInterview(interviewId: string) {
       }
     });
 
+    console.log(`[${processId}] Creating avatar videos for ${questions.length} questions`);
     // Step 2: Create avatar videos
     const videoIds = await createAvatarVideos(interview.avatarId, questions);
 
-    // Step 3: Wait for videos to be processed
-// Update the interview state
+    // Update the interview state
     await updateInterviewState(interviewId, 'PROCESSING_VIDEOS');
 
+    console.log(`[${processId}] Waiting for videos to be processed: ${videoIds.join(', ')}`);
     // Step 3: Wait for videos to be processed
-    const videoUrls = await waitForVideos(videoIds);
+    const videoUrls = await waitForVideos(videoIds, interview.avatarId);
 
+    console.log(`[${processId}] Downloading ${videoUrls.length} videos`);
     // Step 4: Download the videos
     const videoFilePaths = await downloadVideos(videoUrls);
 
     // Step 5: Extract and prepare the nodding clip
+    console.log(`[${processId}] Preparing nodding clip`);
     await updateInterviewState(interviewId, 'MERGING_VIDEOS');
-    const noddingClipPath = await prepareNoddingClip(interview.timestamp);
+    const noddingClipPath = await prepareNoddingClip(interview.timestamp, interview.avatarId);
 
     // Step 6: Merge all videos with nodding clips in between
+    console.log(`[${processId}] Merging videos`);
     const finalVideoPath = await mergeVideos(videoFilePaths, noddingClipPath);
 
     // Step 7: Upload to Cloudinary
+    console.log(`[${processId}] Uploading to Cloudinary`);
     await updateInterviewState(interviewId, 'UPLOADING_VIDEO');
     const cloudinaryResult = await uploadToCloudinary(finalVideoPath);
 
     // Step 8: Update the interview with the video URL
+    console.log(`[${processId}] Updating interview with video URL`);
     await prisma.interview.update({
       where: { id: interviewId },
       data: {
@@ -157,26 +169,46 @@ async function processInterview(interviewId: string) {
     });
 
     // Step 9: Clean up temporary files
+    console.log(`[${processId}] Cleaning up temporary files`);
     const filesToCleanup = [...videoFilePaths, noddingClipPath, finalVideoPath];
     await cleanupTempFiles(filesToCleanup);
+    
+    console.log(`[${processId}] Interview processing completed successfully for interview ${interviewId}`);
   } catch (error: any) {
-    console.error(`Error processing interview ${interviewId}:`, error);
+    console.error(`[${processId}] Error processing interview ${interviewId}:`, error);
     await updateInterviewState(interviewId, 'FAILED');
+    
+    // Add more detailed error information
+    try {
+      await prisma.interview.update({
+        where: { id: interviewId },
+        data: {
+          processingError: error.message || "Unknown error occurred during processing"
+        }
+      });
+    } catch (dbError) {
+      console.error(`[${processId}] Failed to update processing error in database:`, dbError);
+    }
   }
 }
-
 // Function to generate interview questions using Groq
 async function generateInterviewQuestions(resumeText: string, jobDescription: string): Promise<string[]> {
   try {
     const prompt = `
-      I have a candidate's resume and a job description. Based on these, generate 5 interview questions:
+      // I have a candidate's resume and a job description. Based on these, generate 5 interview questions:
+      //
+      // 1. A friendly introduction question (start with "Hi there! Hope you're well.")
+      // 2. Three technical or experience-based questions that match the candidate's skills with the job requirements
+      // 3. A friendly conclusion (end with "That's all we had for today. Congratulations on completing the interview successfully!")
+      //
+      // Format the output as a JSON array of 5 strings, one for each question. Keep each question under 30 words.
+
+      I have a candidate's resume and a job description. Based on these, generate 2 interview questions:
       
-      1. A friendly introduction question (start with "Hi there! Hope you're well.")
-      2. Three technical or experience-based questions that match the candidate's skills with the job requirements
-      3. A friendly conclusion (end with "That's all we had for today. Congratulations on completing the interview successfully!")
+      1. it should be technical or experience-based questions that match the candidate's skills with the job requirements
       
-      Format the output as a JSON array of 5 strings, one for each question. Keep each question under 30 words.
-      
+      Format the output as a JSON array of a 2 strings. Keep question under 30 words.
+
       Resume:
       ${resumeText.substring(0, 1500)}
       
@@ -191,7 +223,7 @@ async function generateInterviewQuestions(resumeText: string, jobDescription: st
           content: prompt
         }
       ],
-      model: "llama-3.1-70b-versatile",
+      model: "llama3-70b-8192",
       response_format: { type: "json_object" }
     });
 
@@ -216,7 +248,7 @@ async function generateInterviewQuestions(resumeText: string, jobDescription: st
 // Function to create avatar videos
 async function createAvatarVideos(avatarId: string, questions: string[]): Promise<string[]> {
   try {
-    const apiKey = process.env.GANOS_API_KEY;
+    const apiKey = process.env.GANAI_API_KEY;
     const videoIds: string[] = [];
 
     for (const question of questions) {
@@ -230,7 +262,6 @@ async function createAvatarVideos(avatarId: string, questions: string[]): Promis
           avatar_id: avatarId,
           title: `Interview Question ${new Date().toISOString()}`,
           text: question,
-          audio_url: ""
         })
       };
 
@@ -252,9 +283,9 @@ async function createAvatarVideos(avatarId: string, questions: string[]): Promis
 }
 
 // Function to wait for video generation to complete
-async function waitForVideos(videoIds: string[]): Promise<string[]> {
+async function waitForVideos(videoIds: string[], avatarId: string): Promise<string[]> {
   try {
-    const apiKey = process.env.GANOS_API_KEY;
+    const apiKey = process.env.GANAI_API_KEY;
     const MAX_RETRIES = 30;
     const RETRY_DELAY = 5000; // 5 seconds
     const videos: string[] = [];
@@ -265,7 +296,7 @@ async function waitForVideos(videoIds: string[]): Promise<string[]> {
       
       // Check if all videos are ready
       const options = { method: 'GET', headers: { 'ganos-api-key': apiKey || '' } };
-      const response = await fetch('https://os.gan.ai/v1/avatars/list_inferences', options);
+      const response = await fetch(`https://os.gan.ai/v1/avatars/list_inferences?limit=10&avatar_id=${avatarId}`, options);
       const data = await response.json();
       
       if (!data.data || !Array.isArray(data.data)) {
@@ -277,7 +308,7 @@ async function waitForVideos(videoIds: string[]): Promise<string[]> {
       
       // Check if all are complete
       const allComplete = ourVideos.length === videoIds.length && 
-                        ourVideos.every((v: any) => v.status === 'completed' && v.video);
+                        ourVideos.every((v: any) => v.status === 'succeeded' && v.video);
       
       if (allComplete) {
         // Return the video URLs in the same order as the questions
@@ -301,13 +332,17 @@ async function waitForVideos(videoIds: string[]): Promise<string[]> {
 // Function to download videos
 async function downloadVideos(videoUrls: string[]): Promise<string[]> {
   try {
+    // Generate a unique ID for this download operation
+    const downloadId = `download_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+    
     const tempDir = path.join(process.cwd(), 'tmp');
-    await fs.mkdir(tempDir, { recursive: true });
+    const downloadDir = path.join(tempDir, downloadId);
+    await fs.mkdir(downloadDir, { recursive: true });
     
     const filePaths: string[] = [];
     for (let i = 0; i < videoUrls.length; i++) {
       const url = videoUrls[i];
-      const filePath = path.join(tempDir, `question_${i + 1}.mp4`);
+      const filePath = path.join(downloadDir, `question_${i + 1}.mp4`);
       
       // Download the file
       const response = await fetch(url);
@@ -325,26 +360,73 @@ async function downloadVideos(videoUrls: string[]): Promise<string[]> {
 }
 
 // Function to extract and prepare the nodding clip
-async function prepareNoddingClip(timestamp: string): Promise<string> {
+async function prepareNoddingClip(timestamp: string, avatarId: string): Promise<string> {
   try {
+    // Generate a unique ID for this operation
+    const operationId = `nodding_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+    
     const tempDir = path.join(process.cwd(), 'tmp');
+    const noddingDir = path.join(tempDir, operationId);
     
-    // Use a sample video for the nodding clip (in production, you would use a real video)
-    // For this example, we're assuming there's a video file to extract from
-    const sourceVideo = process.env.SOURCE_VIDEO_PATH || path.join(process.cwd(), 'public', 'sample_video.mp4');
+    // Make sure the directory exists
+    await fs.mkdir(noddingDir, { recursive: true });
     
-    const noddingClipPath = path.join(tempDir, `nodding_clip.mp4`);
-    const extendedNoddingClipPath = path.join(tempDir, `nodding_extended.mp4`);
+    const apiKey = process.env.GANAI_API_KEY;
+    if (!apiKey) {
+      throw new Error("GANAI_API_KEY environment variable is not set");
+    }
+    
+    const backendUrl = process.env.GANAI_BACKEND_URL || 'https://os.gan.ai';
+    
+    // Get list of avatars
+    const response = await axios.get(`${backendUrl}/v1/avatars/list`, {
+      headers: {
+        'ganos-api-key': apiKey
+      } 
+    });
+    
+    const avatarsList = response.data?.avatars_list;
+    if (!avatarsList || !Array.isArray(avatarsList)) {
+      throw new Error("Failed to get avatars list or invalid response format");
+    }
+    
+    // Find the avatar with the matching ID
+    const filteredAvatars = avatarsList.filter((item: any) => item.avatar_id === avatarId);
+    if (filteredAvatars.length === 0) {
+      throw new Error(`No avatar found with ID: ${avatarId}`);
+    }
+    
+    const url = filteredAvatars[0].base_video;
+    if (!url) {
+      throw new Error("Avatar does not have a base video");
+    }
+    
+    // Download the base video
+    console.log(`[${operationId}] Downloading base video from: ${url}`);
+    const filePath = path.join(noddingDir, `base_video.mp4`);
+    
+    const videoResponse = await fetch(url);
+    if (!videoResponse.ok) {
+      throw new Error(`Failed to fetch base video: ${videoResponse.statusText}`);
+    }
+    
+    const buffer = Buffer.from(await videoResponse.arrayBuffer());
+    await fs.writeFile(filePath, buffer);
+    console.log(`[${operationId}] Base video downloaded to: ${filePath}`);
+
+    const noddingClipPath = path.join(noddingDir, `nodding_clip.mp4`);
+    const extendedNoddingClipPath = path.join(noddingDir, `nodding_extended.mp4`);
     
     // Extract the nodding clip
-    await execPromise(`ffmpeg -ss ${timestamp} -i "${sourceVideo}" -t 10 -c copy "${noddingClipPath}"`);
+    console.log(`[${operationId}] Extracting clip at timestamp: ${timestamp}`);
+    await execPromise(`ffmpeg -ss ${timestamp} -i "${filePath}" -t 10 -c copy "${noddingClipPath}"`);
     
     // Create a 30-second clip by concatenating the nodding clip three times
-    // Create a file list for ffmpeg concat
-    const concatFilePath = path.join(tempDir, 'concat_list.txt');
-    await fs.writeFile(concatFilePath, `file '${noddingClipPath}'\nfile '${noddingClipPath}'\nfile '${noddingClipPath}'`);
+    const concatFilePath = path.join(noddingDir, 'concat_list.txt');
+    await fs.writeFile(concatFilePath, `file '${noddingClipPath.replace(/\\/g, '/').replace(/'/g, "'\\''")}'\nfile '${noddingClipPath.replace(/\\/g, '/').replace(/'/g, "'\\''")}'\nfile '${noddingClipPath.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`);
     
     // Concatenate the clips
+    console.log(`[${operationId}] Creating extended nodding clip`);
     await execPromise(`ffmpeg -f concat -safe 0 -i "${concatFilePath}" -c copy "${extendedNoddingClipPath}"`);
     
     return extendedNoddingClipPath;
@@ -354,29 +436,88 @@ async function prepareNoddingClip(timestamp: string): Promise<string> {
   }
 }
 
+
 // Function to merge videos with nodding clips
 async function mergeVideos(questionVideoPaths: string[], noddingClipPath: string): Promise<string> {
   try {
     const tempDir = path.join(process.cwd(), 'tmp');
-    const outputPath = path.join(tempDir, `final_interview.mp4`);
     
-    // Create a file list for ffmpeg concat that alternates between question videos and nodding clips
-    const concatFilePath = path.join(tempDir, 'final_concat_list.txt');
-    let concatContent = '';
+    // Generate a unique ID for this merge operation
+    const mergeId = `merge_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
     
+    // Create a dedicated directory for this merge operation
+    const mergeDir = path.join(tempDir, mergeId);
+    await fs.mkdir(mergeDir, { recursive: true });
+    
+    const outputPath = path.join(mergeDir, `final_interview.mp4`);
+    
+    console.log(`[${mergeId}] Copying files to local directory for processing`);
+    
+    // Copy all input files to our merge directory to avoid path issues
+    const localFiles: string[] = [];
     for (let i = 0; i < questionVideoPaths.length; i++) {
-      concatContent += `file '${questionVideoPaths[i]}'\n`;
+      const localPath = path.join(mergeDir, `question_${i}.mp4`);
+      await fs.copyFile(questionVideoPaths[i], localPath);
+      localFiles.push(localPath);
       
       // Add nodding clip after each question except the last one
       if (i < questionVideoPaths.length - 1) {
-        concatContent += `file '${noddingClipPath}'\n`;
+        const localNoddingPath = path.join(mergeDir, `nodding_${i}.mp4`);
+        await fs.copyFile(noddingClipPath, localNoddingPath);
+        localFiles.push(localNoddingPath);
       }
     }
     
-    await fs.writeFile(concatFilePath, concatContent);
+    console.log(`[${mergeId}] Using filter_complex method to merge ${localFiles.length} videos`);
     
-    // Merge all videos
-    await execPromise(`ffmpeg -f concat -safe 0 -i "${concatFilePath}" -c copy "${outputPath}"`);
+    // Build the complex filter for concatenation
+    const inputs = localFiles.map(file => `-i "${file}"`).join(' ');
+    let filterComplex = '';
+    
+    // Create the filtergraph for concatenation
+    for (let i = 0; i < localFiles.length; i++) {
+      try {
+        // Check if the file has video and audio streams
+        const { stdout } = await execPromise(`ffprobe -v error -show_entries stream=codec_type -of default=noprint_wrappers=1 "${localFiles[i]}"`);
+        
+        const hasVideo = stdout.includes('codec_type=video');
+        const hasAudio = stdout.includes('codec_type=audio');
+        
+        if (hasVideo && hasAudio) {
+          filterComplex += `[${i}:v:0][${i}:a:0]`;
+        } else if (hasVideo) {
+          // If the file has only video, create a silent audio stream
+          filterComplex += `[${i}:v:0]aevalsrc=0:d=10[a${i}];[${i}:v:0][a${i}]`;
+        } else {
+          // Skip files that have neither video nor audio
+          console.warn(`[${mergeId}] Skipping file ${localFiles[i]} - no video or audio streams detected`);
+          continue;
+        }
+      } catch (error) {
+        console.warn(`[${mergeId}] Error checking streams for ${localFiles[i]}, using defaults:`, error);
+        filterComplex += `[${i}:v:0][${i}:a:0]`;
+      }
+    }
+    
+    filterComplex += `concat=n=${localFiles.length}:v=1:a=1[outv][outa]`;
+    
+    const command = `ffmpeg ${inputs} -filter_complex "${filterComplex}" -map "[outv]" -map "[outa]" "${outputPath}"`;
+    console.log(`[${mergeId}] Executing command: ${command}`);
+    
+    try {
+      await execPromise(command);
+      console.log(`[${mergeId}] Successfully merged videos`);
+    } catch (ffmpegError) {
+      console.error(`[${mergeId}] Error during video merging:`, ffmpegError);
+      
+      // If complex filter fails, fall back to the simplest possible approach - just use the first video
+      if (localFiles.length > 0) {
+        console.log(`[${mergeId}] Falling back to using only the first video`);
+        await fs.copyFile(localFiles[0], outputPath);
+      } else {
+        throw new Error("No valid video files to merge");
+      }
+    }
     
     return outputPath;
   } catch (error: any) {
@@ -409,9 +550,74 @@ async function uploadToCloudinary(videoPath: string): Promise<any> {
 // Clean up temporary files
 async function cleanupTempFiles(filePaths: string[]): Promise<boolean> {
   try {
+    // Keep track of directories to clean up
+    const dirsToCleanup = new Set<string>();
+    
+    // First, try to delete the specific files
     for (const filePath of filePaths) {
-      await fs.unlink(filePath).catch(() => {});
+      try {
+        // Add the parent directory to our cleanup list
+        const dirPath = path.dirname(filePath);
+        if (dirPath.includes('tmp') && !dirPath.endsWith('tmp')) {
+          dirsToCleanup.add(dirPath);
+        }
+        
+        // Check if file exists before trying to delete it
+        try {
+          await fs.access(filePath, fs.constants.F_OK);
+          await fs.unlink(filePath);
+        } catch (err) {
+          // File doesn't exist, which is fine
+          console.log(`File ${filePath} already deleted or doesn't exist`);
+        }
+      } catch (error) {
+        console.warn(`Error during file cleanup (${filePath}):`, error);
+        // Continue with other files even if one fails
+      }
     }
+    
+    // Helper function to recursively delete a directory and all its contents
+    async function removeDirectoryRecursive(dirPath: string): Promise<void> {
+      try {
+        // Read directory contents
+        const entries = await fs.readdir(dirPath, { withFileTypes: true });
+        
+        // Process each entry
+        for (const entry of entries) {
+          const fullPath = path.join(dirPath, entry.name);
+          
+          if (entry.isDirectory()) {
+            // Recursively delete subdirectories
+            await removeDirectoryRecursive(fullPath);
+          } else {
+            // Delete files
+            try {
+              await fs.unlink(fullPath);
+            } catch (err) {
+              console.warn(`Failed to delete file ${fullPath}: ${err}`);
+            }
+          }
+        }
+        
+        // Remove the now-empty directory
+        try {
+          await fs.rmdir(dirPath);
+          console.log(`Successfully removed directory ${dirPath}`);
+        } catch (err) {
+          console.warn(`Failed to remove directory ${dirPath}: ${err}`);
+        }
+      } catch (err) {
+        console.warn(`Error processing directory ${dirPath}: ${err}`);
+      }
+    }
+    
+    // Clean up directories recursively
+    for (const dirPath of dirsToCleanup) {
+      await removeDirectoryRecursive(dirPath).catch(err => {
+        console.warn(`Failed to recursively remove directory ${dirPath}: ${err}`);
+      });
+    }
+    
     return true;
   } catch (error) {
     console.error("Error cleaning up temp files:", error);

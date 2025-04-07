@@ -282,8 +282,8 @@ export default function Page() {
                                 <Image 
                                   src={avatar.thumbnail} 
                                   alt={avatar.title || "Avatar"}
-                                  height="100"
-                                  width="100"
+                                  height={50}
+                                  width={50}
                                   className="w-full aspect-video object-cover rounded-md"
                                 />
                               ) : (
@@ -339,9 +339,11 @@ export default function Page() {
                                   url: '/api/upload',
                                   method: 'POST',
                                   withCredentials: false,
-                                  onload: (response: string) => {
+                                  onload: (response) => {
                                     console.log("upload response", response)
-                                    setResumeText(JSON.parse(response));
+                                    const resumeDetail = JSON.parse(response)
+                                    
+                                    setResumeText(resumeDetail.parsedText);
                                     return response;
                                   },
                                   onerror: (error: any) => {
@@ -389,7 +391,7 @@ export default function Page() {
                               type="text"
                               placeholder="00:00:00"
                               value={timestamp}
-                              onChange={(e) => validateTimestamp(e.target.value)}
+                              onChange={(e) => setTimestamp(e.target.value)}
                               className="mt-1"
                             />
                           </div>
@@ -509,10 +511,10 @@ export default function Page() {
               <Card key={interview.id} className="overflow-hidden">
                 <div className="aspect-video bg-muted">
                   {interview.interviewVideoUrl ? (
-                    <video 
+                    <video
                       src={interview.interviewVideoUrl} 
                       poster={interview.interviewThumbnailUrl || undefined}
-                      className="w-full h-full object-cover"
+                      className="w-full h-96 object-cover"
                       controls
                     />
                   ) : (

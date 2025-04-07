@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-
-const prisma = new PrismaClient();
+import { auth } from "@/auth";
+import { prisma } from "@/lib/prisma";
 
 interface SummaryParams {
   params: {
@@ -14,7 +11,7 @@ interface SummaryParams {
 export async function GET(req: NextRequest, { params }: SummaryParams) {
   try {
     // Check authentication
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user?.email) {
       return NextResponse.json(
         { error: "Unauthorized" },

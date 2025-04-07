@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient, ProcessingState } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { ProcessingState } from "@prisma/client";
+import  { prisma } from "@/lib/prisma"
 
 interface UpdateParams {
   params: {

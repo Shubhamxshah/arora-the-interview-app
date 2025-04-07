@@ -67,7 +67,8 @@ model Interview {
   processingState   ProcessingState  @default(CREATING_QUESTIONS)
   interviewVideoUrl String?
   interviewThumbnailUrl String?
-  
+  processingError String?
+
   // Candidate interview related fields
   candidateToken    String           @unique @default(cuid())
   candidateJoined   Boolean          @default(false)

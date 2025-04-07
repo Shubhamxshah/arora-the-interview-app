@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
 import nodemailer from "nodemailer";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-
-const prisma = new PrismaClient();
+import { auth } from "@/auth";
+import { prisma } from "@/lib/prisma";
 
 // Configure email transporter
 const transporter = nodemailer.createTransport({
@@ -26,7 +23,7 @@ interface EmailParams {
 export async function POST(req: NextRequest, { params }: EmailParams) {
   try {
     // Check authentication
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user?.email) {
       return NextResponse.json(
         { error: "Unauthorized" },
