@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Loader2, ArrowLeft, Download, Share } from "lucide-react";
-import { toast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 
 interface SummaryPageProps {
   params: {
@@ -49,11 +49,7 @@ export default function SummaryPage({ params }: SummaryPageProps) {
       } catch (err: any) {
         console.error("Error fetching interview summary:", err);
         setError(err.message || "Failed to load interview summary");
-        toast({
-          title: "Error",
-          description: err.message || "Failed to load interview summary",
-          variant: "destructive",
-        });
+        toast.error( err.message || "Failed to load interview summary");
       } finally {
         setIsLoading(false);
       }
@@ -94,16 +90,9 @@ export default function SummaryPage({ params }: SummaryPageProps) {
         `${window.location.origin}/interviews/${interview.id}/summary`
       );
       
-      toast({
-        title: "Link Copied",
-        description: "Summary link copied to clipboard",
-      });
+      toast.success("Summary link copied to clipboard");
     } catch (err) {
-      toast({
-        title: "Error",
-        description: "Failed to copy link",
-        variant: "destructive",
-      });
+      toast.success("Failed to copy link");
     }
   };
   

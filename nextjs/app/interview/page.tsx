@@ -1,4 +1,3 @@
-// app/interview/page.tsx
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
@@ -134,20 +133,27 @@ export default function InterviewPage() {
         // Explicitly request permissions BEFORE enumerating devices
         console.log("Requesting camera and microphone permissions...");
         try {
-          // Use low constraints to increase chances of success
-          await navigator.mediaDevices.getUserMedia({
+          // IMPORTANT: Simplify the initial permission request
+          const initialStream = await navigator.mediaDevices.getUserMedia({
             audio: true,
-            video: {
-              width: { ideal: 640 },
-              height: { ideal: 480 },
-            },
+            video: true, 
           });
+          
+          // Important: Save the initial stream and display it immediately
+          streamRef.current = initialStream;
+          
+          if (localVideoRef.current) {
+            localVideoRef.current.srcObject = initialStream;
+            localVideoRef.current.play().catch(e => console.error("Initial play error:", e));
+          }
+          
           console.log("Camera and microphone permissions granted");
         } catch (permErr) {
           console.error("Permission error:", permErr);
           // Try audio only as fallback
           try {
-            await navigator.mediaDevices.getUserMedia({ audio: true });
+            const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            streamRef.current = audioStream;
             console.log("Only microphone permission granted");
             setCameraEnabled(false);
             setHasCamera(false);
@@ -159,7 +165,7 @@ export default function InterviewPage() {
           }
         }
 
-        // Important: After getting permissions, we need to enumerate devices
+        // Enumerate devices after getting permissions
         console.log("Enumerating devices after permissions...");
         const devices = await navigator.mediaDevices.enumerateDevices();
         console.log("All devices:", devices);
@@ -177,7 +183,11 @@ export default function InterviewPage() {
         setAudioDevices(audioInputs);
         setVideoDevices(videoInputs);
         setHasMicrophone(audioInputs.length > 0);
-        setHasCamera(videoInputs.length > 0);
+
+        // Check if we have actual video inputs and set hasCamera accordingly
+        const actuallyHasCamera = videoInputs.length > 0;
+        console.log("Actually has camera:", actuallyHasCamera);
+        setHasCamera(actuallyHasCamera);
 
         // Set default devices
         if (audioInputs.length > 0) {
@@ -187,9 +197,6 @@ export default function InterviewPage() {
         if (videoInputs.length > 0) {
           setSelectedVideoDevice(videoInputs[0].deviceId);
         }
-
-        // Now setup the stream with these devices
-        await setupMediaStream();
 
         setStep(InterviewStep.PreJoin);
       } catch (err) {
@@ -241,19 +248,29 @@ export default function InterviewPage() {
         });
       }
 
+      // Check if we actually have a camera selected
+      const cameraSelected = videoDevices.length > 0 && selectedVideoDevice;
+      console.log(
+        "Camera selected:",
+        cameraSelected,
+        "Device ID:",
+        selectedVideoDevice,
+      );
+
       // Create constraints based on selected devices
       const constraints = {
         audio: selectedAudioDevice
           ? { deviceId: { exact: selectedAudioDevice } }
           : true,
-        video:
-          hasCamera && selectedVideoDevice
-            ? {
-                deviceId: { exact: selectedVideoDevice },
-                width: { ideal: 640 },
-                height: { ideal: 480 },
-              }
-            : false,
+        video: cameraSelected
+          ? {
+              deviceId: { exact: selectedVideoDevice },
+              // Use more forgiving constraints
+              width: { ideal: 320 },
+              height: { ideal: 240 },
+              frameRate: { max: 15 },
+            }
+          : false,
       };
 
       console.log("Using constraints:", JSON.stringify(constraints));
@@ -288,16 +305,49 @@ export default function InterviewPage() {
 
       // Display preview
       if (localVideoRef.current) {
-        console.log("Setting video source");
-        localVideoRef.current.srcObject = stream;
+        console.log("Setting video source object");
+        try {
+          localVideoRef.current.srcObject = stream;
+          console.log("Successfully set srcObject");
 
-        // Make sure video is actually playing
-        localVideoRef.current.onloadedmetadata = () => {
-          console.log("Local video metadata loaded");
-          localVideoRef?.current?.play().catch((e) => {
-            console.error("Could not play local video:", e);
-          });
-        };
+          // Directly attempt to play the video first
+          try {
+            await localVideoRef.current.play();
+            console.log("Local video playing immediately");
+          } catch (playError) {
+            console.warn("Initial play failed, will try on metadata:", playError);
+            
+            // Set up metadata handler as backup
+            localVideoRef.current.onloadedmetadata = async () => {
+              console.log("Local video metadata loaded, attempting to play");
+              try {
+                await localVideoRef.current.play();
+                console.log("Local video playing after metadata loaded");
+              } catch (e) {
+                console.error("Could not play local video after metadata:", e);
+                // Add user click handler as last resort
+                document.addEventListener("click", function clickHandler() {
+                  if (localVideoRef.current) {
+                    localVideoRef.current.play().catch(err => 
+                      console.error("Failed to play on click:", err)
+                    );
+                  }
+                  document.removeEventListener("click", clickHandler);
+                }, { once: true });
+                toast.error("Click anywhere to enable your camera preview");
+              }
+            };
+          }
+
+          // Handle errors
+          localVideoRef.current.onerror = (e) => {
+            console.error("Video element error:", e);
+          };
+        } catch (e) {
+          console.error("Error setting srcObject:", e);
+        }
+      } else {
+        console.error("localVideoRef.current is null");
       }
     } catch (err) {
       console.error("Error setting up media stream:", err);
@@ -305,6 +355,7 @@ export default function InterviewPage() {
       throw err;
     }
   };
+
   // Function to toggle camera
   const toggleCamera = async () => {
     if (!streamRef.current) return;
@@ -343,7 +394,7 @@ export default function InterviewPage() {
     await setupMediaStream();
   };
 
-  // Function to start the interview
+  // Fixed function to start the interview
   const startInterview = async () => {
     console.log("Starting interview...");
 
@@ -352,6 +403,14 @@ export default function InterviewPage() {
       toast.error("Error: Interview video not found");
       return;
     }
+    
+    const hasActiveStream = await refreshStream();
+    if (!hasActiveStream) {
+      toast.error("Could not access camera or microphone");
+      return;
+    }
+
+    console.log("Interview video URL:", interview.interviewVideoUrl);
 
     // Verify we have at least some media available
     if (!streamRef.current) {
@@ -367,7 +426,7 @@ export default function InterviewPage() {
     if (!hasVideoTrack && hasAudioTrack) {
       console.warn("Starting interview with audio only");
       toast.warning(
-        "Starting interview with audio only. Video is not available.",
+        "Starting interview with audio only. Video is not available."
       );
     }
 
@@ -379,104 +438,180 @@ export default function InterviewPage() {
     }
 
     try {
-      // Preload the interviewer video before starting recording
-      console.log("Preloading interviewer video:", interview.interviewVideoUrl);
-
-      if (interviewerVideoRef.current) {
-        interviewerVideoRef.current.src = interview.interviewVideoUrl;
-        interviewerVideoRef.current.load();
-
-        // Wait for video to be ready before proceeding
-        await new Promise((resolve, reject) => {
-          const timeoutId = setTimeout(() => {
-            reject(new Error("Timeout waiting for video to load"));
-          }, 10000); // 10 second timeout
-
-          interviewerVideoRef.current.oncanplay = () => {
-            clearTimeout(timeoutId);
-            resolve(true);
-          };
-
-          interviewerVideoRef.current.onerror = (e) => {
-            clearTimeout(timeoutId);
-            reject(new Error("Error loading interview video"));
-          };
-        });
-
-        console.log("Interviewer video ready to play");
-      }
-
-      // Now start recording
+      // Start recording immediately
       startRecording();
-
-      // Set up event listeners
-      if (interviewerVideoRef.current) {
-        interviewerVideoRef.current.onplay = () => {
-          console.log("Interviewer video playing");
-          setIsInterviewerSpeaking(true);
-        };
-
-        interviewerVideoRef.current.onpause = () => {
-          console.log("Interviewer video paused");
-          setIsInterviewerSpeaking(false);
-        };
-
-        interviewerVideoRef.current.onended = () => {
-          console.log("Interviewer video ended");
-          setIsInterviewerSpeaking(false);
-          finishInterview();
-        };
-
-        // Set up timeupdate listener to update progress
-        interviewerVideoRef.current.ontimeupdate = () => {
-          if (interviewerVideoRef.current) {
-            const currentTime = interviewerVideoRef.current.currentTime;
-            const duration = interviewerVideoRef.current.duration;
+      
+      // Switch to interview mode first, so the UI elements are ready
+      setStep(InterviewStep.Interview);
+      
+      // Wait a moment for UI to update
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Verify the video URL format
+      let videoUrl = interview.interviewVideoUrl;
+      
+      // If URL is relative, make it absolute
+      if (videoUrl && videoUrl.startsWith('/')) {
+        const baseUrl = window.location.origin;
+        videoUrl = `${baseUrl}${videoUrl}`;
+        console.log("Converted to absolute URL:", videoUrl);
+      }
+      
+      // Now find the interviewer video element in the DOM
+      // Try to get the element via ref first
+      let videoElement = interviewerVideoRef.current;
+      
+      // If ref doesn't work, try to find it directly in the DOM
+      if (!videoElement) {
+        videoElement = document.querySelector('.interviewer-video') as HTMLVideoElement;
+        // Update the ref if we found the element
+        if (videoElement) {
+          interviewerVideoRef.current = videoElement;
+        }
+      }
+      
+      if (!videoElement) {
+        console.error("Could not find interviewer video element");
+        toast.error("Error: Could not initialize video player");
+        return;
+      }
+      
+      console.log("Found video element:", videoElement);
+      
+      // Set up event listeners before setting source
+      videoElement.onloadedmetadata = () => {
+        console.log("Video metadata loaded");
+      };
+      
+      videoElement.oncanplay = () => {
+        console.log("Video can play event fired");
+      };
+      
+      videoElement.onplay = () => {
+        console.log("Interviewer video playing");
+        setIsInterviewerSpeaking(true);
+      };
+      
+      videoElement.onpause = () => {
+        console.log("Interviewer video paused");
+        setIsInterviewerSpeaking(false);
+      };
+      
+      videoElement.onended = () => {
+        console.log("Interviewer video ended");
+        setIsInterviewerSpeaking(false);
+        finishInterview();
+      };
+      
+      videoElement.ontimeupdate = () => {
+        if (videoElement) {
+          const currentTime = videoElement.currentTime;
+          const duration = videoElement.duration;
+          if (duration > 0) {
             const calculatedProgress = (currentTime / duration) * 100;
             setProgress(calculatedProgress);
           }
-        };
-
-        // Play the video with error handling
-        try {
-          console.log("Playing interviewer video");
-          await interviewerVideoRef.current.play();
-        } catch (playError) {
-          console.error("Error playing video:", playError);
-
-          // Try with user interaction
-          toast.error(
-            "Could not play video automatically. Please click the screen to start the interview.",
-          );
-
-          // Add a click handler to the video element to start playing
-          const clickHandler = async () => {
-            try {
-              await interviewerVideoRef.current.play();
-              document.removeEventListener("click", clickHandler);
-            } catch (err) {
-              console.error("Still cannot play video after click:", err);
-              toast.error(
-                "Could not play interview video. Please try refreshing the page.",
-              );
-            }
-          };
-
-          document.addEventListener("click", clickHandler);
-          return;
         }
-      }
+      };
+      
+      videoElement.onerror = (e) => {
+        console.error("Video element error:", videoElement.error);
+        toast.error(`Video error: ${videoElement.error?.message || "Unknown error"}`);
+      };
+      
+      // Set source and try to load
+      videoElement.src = videoUrl;
+      videoElement.load();
+      
+      // Create a click overlay to start the video (addressing autoplay restrictions)
+      const overlayDiv = document.createElement("div");
+      overlayDiv.style.position = "fixed";
+      overlayDiv.style.top = "0";
+      overlayDiv.style.left = "0";
+      overlayDiv.style.width = "100%";
+      overlayDiv.style.height = "100%";
+      overlayDiv.style.backgroundColor = "rgba(0,0,0,0.7)";
+      overlayDiv.style.zIndex = "9999";
+      overlayDiv.style.display = "flex";
+      overlayDiv.style.justifyContent = "center";
+      overlayDiv.style.alignItems = "center";
+      overlayDiv.style.cursor = "pointer";
 
-      setStep(InterviewStep.Interview);
+      const messageDiv = document.createElement("div");
+      messageDiv.style.color = "white";
+      messageDiv.style.fontSize = "24px";
+      messageDiv.style.textAlign = "center";
+      messageDiv.style.padding = "20px";
+      messageDiv.innerHTML = "<strong>Click anywhere to start the interview</strong>";
+
+      overlayDiv.appendChild(messageDiv);
+      document.body.appendChild(overlayDiv);
+
+      overlayDiv.onclick = async () => {
+        try {
+          document.body.removeChild(overlayDiv);
+          console.log("Attempting to play video after user interaction");
+          
+          try {
+            await videoElement.play();
+            console.log("Interviewer video playing successfully");
+          } catch (playError) {
+            console.error("Error playing video after user interaction:", playError);
+            toast.error("Could not play the interview. Please try a different browser.");
+          }
+        } catch (error) {
+          console.error("Error during play attempt:", error);
+        }
+      };
     } catch (err) {
       console.error("Error starting interview:", err);
-      toast.error(
-        "Failed to start the interview: " + (err.message || "Unknown error"),
-      );
+      toast.error("Failed to start the interview: " + (err.message || "Unknown error"));
     }
   };
 
-  // Function to start recording
+  // Improved function to refresh the stream
+  const refreshStream = async () => {
+    try {
+      // Stop any existing stream
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+
+      // Get fresh stream
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: hasCamera,
+      });
+
+      // Check if we got tracks
+      console.log(
+        "New stream tracks:",
+        stream.getTracks().map((t) => t.kind),
+      );
+
+      // Store stream
+      streamRef.current = stream;
+
+      // Update local video display
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+        try {
+          await localVideoRef.current.play();
+        } catch (e) {
+          console.warn("Could not autoplay refreshed stream:", e);
+        }
+      }
+
+      return (
+        stream.getAudioTracks().length > 0 || stream.getVideoTracks().length > 0
+      );
+    } catch (err) {
+      console.error("Failed to refresh stream:", err);
+      return false;
+    }
+  };
+
+  // More robust startRecording function
   const startRecording = () => {
     console.log("Starting recording...");
 
@@ -498,6 +633,7 @@ export default function InterviewPage() {
       `Active tracks - video: ${hasActiveVideoTrack}, audio: ${hasActiveAudioTrack}`,
     );
 
+    // Allow audio-only recording
     if (!hasActiveAudioTrack && !hasActiveVideoTrack) {
       console.error("No active tracks in stream");
       toast.error("Cannot record: No active audio or video");
@@ -508,13 +644,13 @@ export default function InterviewPage() {
       // Clear any previously recorded chunks
       recordedChunksRef.current = [];
 
-      // Try different MIME types in order of preference
+      // Update MIME types order for better compatibility
       const mimeTypes = [
         "video/webm",
+        "audio/webm", // Try audio-only format if video formats fail
         "video/webm;codecs=vp8",
         "video/webm;codecs=vp9",
         "video/mp4",
-        "audio/webm",
         "audio/mp4",
       ];
 
@@ -536,8 +672,24 @@ export default function InterviewPage() {
       }
 
       console.log("Creating MediaRecorder with options:", options);
+
+      // If we only have audio, use an audio-only stream for recording
+      let recordingStream = streamRef.current;
+      if (
+        hasActiveAudioTrack &&
+        !hasActiveVideoTrack &&
+        MediaRecorder.isTypeSupported("audio/webm")
+      ) {
+        console.log("Creating audio-only MediaRecorder");
+        options = { mimeType: "audio/webm" };
+
+        // Create a new audio-only stream
+        const audioTrack = streamRef.current.getAudioTracks()[0];
+        recordingStream = new MediaStream([audioTrack]);
+      }
+
       mediaRecorderRef.current = new MediaRecorder(
-        streamRef.current,
+        recordingStream,
         supportedType ? options : undefined,
       );
 
@@ -733,6 +885,7 @@ export default function InterviewPage() {
                     variant={cameraEnabled ? "default" : "outline"}
                     size="sm"
                     onClick={toggleCamera}
+                    disabled={!hasCamera}
                   >
                     {cameraEnabled ? (
                       <>
@@ -828,7 +981,7 @@ export default function InterviewPage() {
           <CardFooter className="flex justify-end">
             <Button
               size="lg"
-              disabled={!hasCamera || !hasMicrophone}
+              disabled={!hasMicrophone} // Only require microphone, not camera
               onClick={startInterview}
             >
               Join Interview
@@ -839,42 +992,35 @@ export default function InterviewPage() {
     );
   }
 
-  // Live Interview UI
+  // Improved side-by-side Live Interview UI
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-900">
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-        {/* Interviewer Video */}
-        <div className="flex-1 relative bg-black">
+      {/* Main content area with side-by-side videos */}
+      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 overflow-hidden">
+        {/* Interviewer Video - Now takes half the screen width on desktop */}
+        <div className="relative bg-black overflow-hidden">
           <video
             ref={interviewerVideoRef}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-contain interviewer-video"
             playsInline
+            controls={false}
           />
-
-          <div className="absolute bottom-4 left-4 right-4 flex items-center space-x-2 text-white">
-            <div className="bg-black bg-opacity-60 px-3 py-1 rounded-full text-sm">
-              {isInterviewerSpeaking
-                ? "Interviewer speaking..."
-                : "Waiting for your response..."}
+          
+          {isInterviewerSpeaking && (
+            <div className="absolute top-4 left-4 bg-blue-500 bg-opacity-70 px-3 py-1 rounded-full text-sm text-white">
+              Interviewer speaking
             </div>
-
-            {isRecording && (
-              <div className="flex items-center bg-red-500 bg-opacity-60 px-3 py-1 rounded-full text-sm">
-                <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse mr-2"></span>
-                Recording
-              </div>
-            )}
-          </div>
+          )}
         </div>
 
-        {/* Candidate Video */}
-        <div className="w-full md:w-80 h-60 md:h-auto relative bg-gray-800">
+        {/* Candidate Video - Now takes half the screen width on desktop */}
+        <div className="relative bg-gray-800 overflow-hidden">
           <video
             ref={localVideoRef}
             muted
             autoPlay
             playsInline
-            className="w-full h-full object-cover"
+            className="w-full h-full object-contain"
           />
 
           {!cameraEnabled && (
@@ -883,10 +1029,18 @@ export default function InterviewPage() {
             </div>
           )}
 
-          <div className="absolute bottom-2 right-2 flex space-x-2">
+          {isRecording && (
+            <div className="absolute top-4 right-4 flex items-center bg-red-500 bg-opacity-70 px-3 py-1 rounded-full text-sm text-white">
+              <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse mr-2"></span>
+              Recording
+            </div>
+          )}
+
+          <div className="absolute bottom-4 right-4 flex space-x-2">
             <button
               className={`p-2 rounded-full ${cameraEnabled ? "bg-gray-700" : "bg-red-600"}`}
               onClick={toggleCamera}
+              disabled={!hasCamera}
             >
               {cameraEnabled ? (
                 <Video className="h-5 w-5 text-white" />
@@ -909,7 +1063,7 @@ export default function InterviewPage() {
         </div>
       </div>
 
-      {/* Bottom controls */}
+      {/* Bottom controls with progress bar */}
       <div className="bg-gray-800 text-white p-4 flex flex-col">
         <Progress value={progress} className="mb-4" />
 

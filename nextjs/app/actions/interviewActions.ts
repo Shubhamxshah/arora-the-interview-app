@@ -754,7 +754,7 @@ async function generateInterviewSummary(transcript: string): Promise<string> {
           content: prompt
         }
       ],
-      model: "llama-3.1-70b-versatile"
+      model: "llama3-70b-8192"
     });
 
     const content = response.choices[0]?.message?.content;

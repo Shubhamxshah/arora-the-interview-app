@@ -10,7 +10,7 @@ interface UpdateParams {
 
 export async function POST(req: NextRequest, { params }: UpdateParams) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const { state } = await req.json();
     
     if (!Object.values(ProcessingState).includes(state as ProcessingState)) {
