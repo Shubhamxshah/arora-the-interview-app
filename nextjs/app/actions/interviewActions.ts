@@ -267,7 +267,7 @@ async function createAvatarVideos(avatarId: string, questions: string[]): Promis
 
       const response = await fetch('https://os.gan.ai/v1/avatars/create_video', options);
       const data = await response.json();
-      
+      console.log(data);      
       if (!data.inference_id) {
         throw new Error(`Failed to create video for question: ${question.substring(0, 20)}...`);
       }
