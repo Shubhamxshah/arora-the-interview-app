@@ -512,11 +512,19 @@ export default function Page() {
                 <div className="aspect-video bg-muted">
                   {interview.interviewVideoUrl ? (
                     <video
+                      src={interview.candidateVideoUrl || ""} 
+                      poster={interview.interviewThumbnailUrl || undefined}
+                      className="w-full h-96 object-cover"
+                      controls
+                    />
+                  ) : interview.interviewVideoUrl ? (
+                    <video
                       src={interview.interviewVideoUrl} 
                       poster={interview.interviewThumbnailUrl || undefined}
                       className="w-full h-96 object-cover"
                       controls
                     />
+
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
                       <Video className="h-12 w-12 opacity-30" />
