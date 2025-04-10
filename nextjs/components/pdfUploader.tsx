@@ -45,9 +45,9 @@ export function PdfUploader({ onTextExtracted }: { onTextExtracted: (text: strin
       onTextExtracted(extractedText);
       
       toast.success("Resume uploaded and parsed successfully");
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error uploading PDF:', error);
-      toast.error( error.message || "Could not upload and parse the PDF");
+      toast.error("Could not upload and parse the PDF");
     } finally {
       setIsUploading(false);
     }

@@ -37,7 +37,7 @@ export default function InterviewPage() {
   const token = searchParams.get("token");
 
   const [step, setStep] = useState<InterviewStep>(InterviewStep.Setup);
-  const [interview, setInterview] = useState<any>(null);
+  const [interview, setInterview] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -56,7 +56,6 @@ export default function InterviewPage() {
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
 
   // Interview progress
-  const [currentQuestion, setCurrentQuestion] = useState(0);
   const [isInterviewerSpeaking, setIsInterviewerSpeaking] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -145,9 +144,9 @@ export default function InterviewPage() {
           },
           body: JSON.stringify({ state: "WAITING_FOR_CANDIDATE" }),
         });
-      } catch (err: any) {
+      } catch (err) {
         console.error("Error fetching interview:", err);
-        setError(err.message || "Failed to load interview");
+        setError("Failed to load interview");
         setStep(InterviewStep.Error);
         setIsLoading(false);
       }
@@ -255,12 +254,12 @@ export default function InterviewPage() {
         }
 
         setStep(InterviewStep.PreJoin);
-      } catch (err) {
+      } catch {
         console.error("Error during media device check:", err);
-        setError(err.message || "Failed to access camera and microphone");
+        setError("Failed to access camera and microphone");
         toast.error(
           "Media Access Error: " +
-            (err.message || "Could not access your camera and microphone"),
+            ("Could not access your camera and microphone"),
         );
       }
     };
@@ -821,9 +820,9 @@ export default function InterviewPage() {
 
         // Mark interview as complete
         setStep(InterviewStep.Complete);
-      } catch (err: any) {
+      } catch (err) {
         console.error("Error submitting recording:", err);
-        setError(err.message || "Failed to submit recording");
+        setError("Failed to submit recording");
         setStep(InterviewStep.Error);
       }
     }, 1000);

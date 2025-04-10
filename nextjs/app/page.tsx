@@ -20,6 +20,7 @@ export default function Home() {
   })
 
   const opacity = useTransform(scrollYProgress, [0, 0.5], [0, 1])
+  console.log(opacity)
 
   useEffect(() => {
     controls.start({
@@ -269,7 +270,7 @@ export default function Home() {
                   <div>
                     <h3 className="text-xl font-semibold mb-2">Create Your Avatar</h3>
                     <p className="text-gray-600">
-                      Customize an AI avatar that represents your company's culture and values. Choose appearance,
+                      Customize an AI avatar that represents your companys culture and values. Choose appearance,
                       voice, and interview style.
                     </p>
                   </div>
