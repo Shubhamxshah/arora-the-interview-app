@@ -18,9 +18,9 @@ const transporter = nodemailer.createTransport({
 });
 
 interface EmailParams {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 export async function POST(req: NextRequest, { params }: EmailParams) {

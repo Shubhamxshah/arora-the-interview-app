@@ -101,14 +101,6 @@ export default function Page() {
     }
   };
 
-  const validateTimestamp = (value: string) => {
-    // Basic validation for timestamp format (HH:MM:SS)
-    const pattern = /^([0-5]\d|[0-9]):([0-5]\d):([0-5]\d)$/;
-    if (pattern.test(value) || value === "") {
-      setTimestamp(value);
-    }
-  };
-
   const handleSubmit = async () => {
     if (!selectedAvatar || !resumeText || !jobDescription || !candidateEmail || !timestamp) {
       toast.error("Please complete all fields before submitting");
@@ -196,7 +188,7 @@ export default function Page() {
       
       // Refresh interviews
       fetchInterviews();
-    } catch (error) {
+    } catch {
       toast.error("Failed to send email. Please try again.");
     }
   };

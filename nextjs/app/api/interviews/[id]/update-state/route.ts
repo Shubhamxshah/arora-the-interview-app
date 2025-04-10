@@ -3,9 +3,9 @@ import { ProcessingState } from "@prisma/client";
 import  { prisma } from "@/lib/prisma"
 
 interface UpdateParams {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 export async function POST(req: NextRequest, { params }: UpdateParams) {

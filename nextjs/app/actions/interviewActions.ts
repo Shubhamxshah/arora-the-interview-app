@@ -75,11 +75,10 @@ export async function createInterview(input: InterviewInput) {
       success: true,
       interviewId: interview.id
     };
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error creating interview:", error);
     return {
       success: false,
-      error: error.message
     };
   }
 }
@@ -174,7 +173,7 @@ async function processInterview(interviewId: string) {
     await cleanupTempFiles(filesToCleanup);
     
     console.log(`[${processId}] Interview processing completed successfully for interview ${interviewId}`);
-  } catch (error: any) {
+  } catch (error) {
     console.error(`[${processId}] Error processing interview ${interviewId}:`, error);
     await updateInterviewState(interviewId, 'FAILED');
     
@@ -183,7 +182,7 @@ async function processInterview(interviewId: string) {
       await prisma.interview.update({
         where: { id: interviewId },
         data: {
-          processingError: error.message || "Unknown error occurred during processing"
+          processingError: error || "Unknown error occurred during processing"
         }
       });
     } catch (dbError) {
@@ -239,9 +238,9 @@ async function generateInterviewQuestions(resumeText: string, jobDescription: st
       console.error("Failed to parse Groq response:", error);
       throw new Error("Failed to parse questions from Groq response");
     }
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error generating questions with Groq:", error);
-    throw new Error(`Failed to generate interview questions: ${error.message}`);
+    throw new Error(`Failed to generate interview questions: ${error}`);
   }
 }
 
@@ -276,9 +275,9 @@ async function createAvatarVideos(avatarId: string, questions: string[]): Promis
     }
 
     return videoIds;
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error creating avatar videos:", error);
-    throw new Error(`Failed to create avatar videos: ${error.message}`);
+    throw new Error(`Failed to create avatar videos: ${error}`);
   }
 }
 
@@ -303,7 +302,7 @@ async function waitForVideos(videoIds: string[], avatarId: string): Promise<stri
         continue;
       }
 
-      // Filter videos by our inference IDs
+      // Filter videos by our inference IDs 
       const ourVideos = data.data.filter((v: any) => videoIds.includes(v.inference_id));
       
       // Check if all are complete
@@ -566,7 +565,7 @@ async function cleanupTempFiles(filePaths: string[]): Promise<boolean> {
         try {
           await fs.access(filePath, fs.constants.F_OK);
           await fs.unlink(filePath);
-        } catch (err) {
+        } catch {
           // File doesn't exist, which is fine
           console.log(`File ${filePath} already deleted or doesn't exist`);
         }
@@ -675,10 +674,10 @@ export async function processCandidateInterview(interviewId: string, videoBlob: 
     await fs.unlink(tempFilePath).catch(() => {});
     
     return { success: true };
-  } catch (error: any) {
+  } catch (error) {
     console.error(`Error processing candidate interview ${interviewId}:`, error);
     await updateInterviewState(interviewId, 'FAILED');
-    return { success: false, error: error.message };
+    return { success: false };
   }
 }
 

@@ -1,7 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile } from "fs/promises";
-import { join } from "path";
-import { v4 as uuidv4 } from "uuid";
 import { processCandidateInterview } from "@/app/actions/interviewActions";
 
 export async function POST(req: NextRequest) {

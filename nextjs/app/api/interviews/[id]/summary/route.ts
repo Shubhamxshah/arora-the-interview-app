@@ -3,9 +3,9 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 
 interface SummaryParams {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 export async function GET(req: NextRequest, { params }: SummaryParams) {
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest, { params }: SummaryParams) {
       );
     }
     
-    const { id } = params;
+    const { id } = await params;
     
     // Get the user
     const user = await prisma.user.findUnique({

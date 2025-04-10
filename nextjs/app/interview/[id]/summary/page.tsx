@@ -91,7 +91,7 @@ export default function SummaryPage({ params }: SummaryPageProps) {
       );
       
       toast.success("Summary link copied to clipboard");
-    } catch (err) {
+    } catch {
       toast.success("Failed to copy link");
     }
   };

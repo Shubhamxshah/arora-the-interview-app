@@ -17,7 +17,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { VisuallyHidden } from "@/components/ui/visually-hidden";
 import { Toaster, toast } from "sonner";
 
 // Updated interface based on the API response structure
