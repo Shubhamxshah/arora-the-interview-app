@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
     ]
   }, 
   serverExternalPackages : ['pdf2json'],
+  allowedDevOrigins: ['http://213.136.68.185:3000']
 };
 
 export default nextConfig;

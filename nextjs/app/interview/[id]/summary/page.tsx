@@ -1,7 +1,7 @@
 // app/interviews/[id]/summary/page.tsx
 'use client'
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,9 +10,9 @@ import { Loader2, ArrowLeft, Download, Share } from "lucide-react";
 import { toast } from "sonner";
 
 interface SummaryPageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 interface InterviewSummary {
@@ -27,7 +27,7 @@ interface InterviewSummary {
 }
 
 export default function SummaryPage({ params }: SummaryPageProps) {
-  const { id } = params;
+  const { id } = use(params);
   const router = useRouter();
   
   const [interview, setInterview] = useState<InterviewSummary | null>(null);

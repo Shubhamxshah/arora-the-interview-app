@@ -191,7 +191,7 @@ export default function Home() {
             >
               <div className="relative w-full aspect-video rounded-xl overflow-hidden shadow-2xl border border-white/10">
                 <Image
-                  src="/placeholder.svg?height=600&width=800"
+                  src="/interview.png"
                   alt="AI Interview Platform Dashboard"
                   width={800}
                   height={600}
@@ -321,7 +321,7 @@ export default function Home() {
             >
               <div className="relative rounded-xl overflow-hidden shadow-2xl border border-gray-200">
                 <Image
-                  src="/placeholder.svg?height=600&width=800"
+                  src="/interview.png"
                   alt="AI Interview Process"
                   width={800}
                   height={600}
@@ -448,7 +448,7 @@ export default function Home() {
                 <div className="md:w-1/3">
                   <div className="relative w-full aspect-square">
                     <Image
-                      src="/placeholder.svg?height=300&width=300"
+                      src="/interview.png"
                       alt="AI Avatar"
                       width={300}
                       height={300}
