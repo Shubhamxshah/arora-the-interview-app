@@ -505,15 +505,14 @@ export default function Page() {
 
       <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
         <h2 className="text-2xl font-semibold">Interview Invites</h2>
-        <div className="grid auto-rows-min gap-4 md:grid-cols-3">
+        <div className="grid auto-rows-min gap-4 md:grid-cols-3 lg:grid-cols-4">
           {filteredInterviews.length > 0 ? (
             filteredInterviews.map(interview => (
               <Card key={interview.id} className="overflow-hidden">
                 <div className="aspect-video bg-muted">
-                  {interview.interviewVideoUrl ? (
+                  {interview.candidateVideoUrl ? (
                     <video
                       src={interview.candidateVideoUrl || ""} 
-                      poster={interview.interviewThumbnailUrl || undefined}
                       className="w-full h-96 object-cover"
                       controls
                     />
