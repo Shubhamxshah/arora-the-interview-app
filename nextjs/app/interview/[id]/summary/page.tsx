@@ -135,7 +135,7 @@ export default function SummaryPage({ params }: SummaryPageProps) {
         <Button 
           variant="outline" 
           size="sm"
-          onClick={() => router.push('/')}
+          onClick={() => router.push('/dashboard')}
           className="mr-2"
         >
           <ArrowLeft className="h-4 w-4 mr-2" /> Back

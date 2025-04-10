@@ -203,7 +203,7 @@ export default function Page() {
 
   const viewInterviewSummary = (interview: Interview) => {
     if (interview.interviewSummary) {
-      router.push(`/interviews/${interview.id}/summary`);
+      router.push(`/interview/${interview.id}/summary`);
     } else {
       toast.error("The interview summary is not yet available");
     }
