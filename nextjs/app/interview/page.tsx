@@ -68,6 +68,47 @@ export default function InterviewPage() {
   const streamRef = useRef<MediaStream | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
 
+  // Helper function to create play overlay for autoplay issues
+  const createPlayOverlay = (videoElement: HTMLVideoElement) => {
+    // Create overlay element
+    const overlay = document.createElement('div');
+    overlay.style.position = 'absolute';
+    overlay.style.top = '0';
+    overlay.style.left = '0';
+    overlay.style.width = '100%';
+    overlay.style.height = '100%';
+    overlay.style.display = 'flex';
+    overlay.style.justifyContent = 'center';
+    overlay.style.alignItems = 'center';
+    overlay.style.backgroundColor = 'rgba(0,0,0,0.7)';
+    overlay.style.cursor = 'pointer';
+    overlay.style.zIndex = '10';
+    
+    // Create play button
+    const playButton = document.createElement('div');
+    playButton.innerHTML = '▶️';
+    playButton.style.fontSize = '48px';
+    
+    // Append button to overlay
+    overlay.appendChild(playButton);
+    
+    // Add click handler
+    overlay.addEventListener('click', async () => {
+      try {
+        await videoElement.play();
+        console.log("Video started playing after user interaction");
+        // Remove overlay on success
+        overlay.remove();
+      } catch (err) {
+        console.error("Failed to play video after click:", err);
+        toast.error("Could not start camera preview. Please try a different browser.");
+      }
+    });
+    
+    // Add to video container
+    videoElement.parentElement?.appendChild(overlay);
+  };
+
   // Fetch interview data
   useEffect(() => {
     if (!token) {
@@ -144,10 +185,21 @@ export default function InterviewPage() {
           
           if (localVideoRef.current) {
             localVideoRef.current.srcObject = initialStream;
-            localVideoRef.current.play().catch(e => console.error("Initial play error:", e));
+            
+            // Explicitly force a play attempt with proper error handling
+            try {
+              await localVideoRef.current.play();
+              console.log("Local video playing after initial permissions");
+            } catch (playErr) {
+              console.warn("Initial play failed:", playErr);
+              // Create a play button overlay as fallback
+              createPlayOverlay(localVideoRef.current);
+            }
           }
           
           console.log("Camera and microphone permissions granted");
+          setHasCamera(initialStream.getVideoTracks().length > 0);
+          setHasMicrophone(initialStream.getAudioTracks().length > 0);
         } catch (permErr) {
           console.error("Permission error:", permErr);
           // Try audio only as fallback
@@ -157,6 +209,7 @@ export default function InterviewPage() {
             console.log("Only microphone permission granted");
             setCameraEnabled(false);
             setHasCamera(false);
+            setHasMicrophone(true);
           } catch (audioErr) {
             console.error("Audio permission error:", audioErr);
             throw new Error(
@@ -188,6 +241,9 @@ export default function InterviewPage() {
         const actuallyHasCamera = videoInputs.length > 0;
         console.log("Actually has camera:", actuallyHasCamera);
         setHasCamera(actuallyHasCamera);
+        
+        // Only set camera to enabled if we actually have a camera
+        setCameraEnabled(actuallyHasCamera && streamRef.current?.getVideoTracks().length > 0);
 
         // Set default devices
         if (audioInputs.length > 0) {
@@ -234,6 +290,38 @@ export default function InterviewPage() {
     };
   }, [step, isLoading]);
 
+  // Function to actually display a stream in the video element
+  const displayVideoStream = async (stream: MediaStream, videoElement: HTMLVideoElement) => {
+    if (!stream || !videoElement) return false;
+    
+    try {
+      // First make sure we have video tracks if we're expecting them
+      const hasVideoTracks = stream.getVideoTracks().length > 0;
+      
+      // Set the srcObject
+      videoElement.srcObject = stream;
+      
+      // Attempt to play
+      try {
+        await videoElement.play();
+        console.log("Video playing successfully");
+        return true;
+      } catch (playErr) {
+        console.warn("Error playing video:", playErr);
+        
+        // Create an interactive overlay only if we have video tracks
+        if (hasVideoTracks) {
+          createPlayOverlay(videoElement);
+        }
+        
+        return false;
+      }
+    } catch (err) {
+      console.error("Error displaying video stream:", err);
+      return false;
+    }
+  };
+
   // Function to set up media stream
   const setupMediaStream = async () => {
     try {
@@ -262,7 +350,7 @@ export default function InterviewPage() {
         audio: selectedAudioDevice
           ? { deviceId: { exact: selectedAudioDevice } }
           : true,
-        video: cameraSelected
+        video: cameraSelected && cameraEnabled
           ? {
               deviceId: { exact: selectedVideoDevice },
               // Use more forgiving constraints
@@ -297,58 +385,24 @@ export default function InterviewPage() {
       // Update UI based on tracks
       setHasMicrophone(hasAudioTrack);
       setHasCamera(hasVideoTrack);
-      setCameraEnabled(hasVideoTrack);
-      setMicrophoneEnabled(hasAudioTrack);
-
+      if (!hasVideoTrack) {
+        setCameraEnabled(false);
+      }
+      
       // Store the stream
       streamRef.current = stream;
 
-      // Display preview
+      // Display preview - now using our helper function
       if (localVideoRef.current) {
-        console.log("Setting video source object");
-        try {
-          localVideoRef.current.srcObject = stream;
-          console.log("Successfully set srcObject");
-
-          // Directly attempt to play the video first
-          try {
-            await localVideoRef.current.play();
-            console.log("Local video playing immediately");
-          } catch (playError) {
-            console.warn("Initial play failed, will try on metadata:", playError);
-            
-            // Set up metadata handler as backup
-            localVideoRef.current.onloadedmetadata = async () => {
-              console.log("Local video metadata loaded, attempting to play");
-              try {
-                await localVideoRef.current.play();
-                console.log("Local video playing after metadata loaded");
-              } catch (e) {
-                console.error("Could not play local video after metadata:", e);
-                // Add user click handler as last resort
-                document.addEventListener("click", function clickHandler() {
-                  if (localVideoRef.current) {
-                    localVideoRef.current.play().catch(err => 
-                      console.error("Failed to play on click:", err)
-                    );
-                  }
-                  document.removeEventListener("click", clickHandler);
-                }, { once: true });
-                toast.error("Click anywhere to enable your camera preview");
-              }
-            };
-          }
-
-          // Handle errors
-          localVideoRef.current.onerror = (e) => {
-            console.error("Video element error:", e);
-          };
-        } catch (e) {
-          console.error("Error setting srcObject:", e);
+        const playSuccess = await displayVideoStream(stream, localVideoRef.current);
+        if (!playSuccess) {
+          console.warn("Video display not immediately successful, overlay created");
         }
       } else {
         console.error("localVideoRef.current is null");
       }
+      
+      return true;
     } catch (err) {
       console.error("Error setting up media stream:", err);
       toast.error("Media Error: Could not access selected devices");
@@ -363,10 +417,15 @@ export default function InterviewPage() {
     const enabled = !cameraEnabled;
     setCameraEnabled(enabled);
 
-    // Enable/disable video tracks
-    streamRef.current.getVideoTracks().forEach((track) => {
-      track.enabled = enabled;
-    });
+    if (enabled && streamRef.current.getVideoTracks().length === 0) {
+      // We need to recreate the stream to add video
+      await setupMediaStream();
+    } else {
+      // Just toggle existing tracks
+      streamRef.current.getVideoTracks().forEach((track) => {
+        track.enabled = enabled;
+      });
+    }
   };
 
   // Function to toggle microphone
@@ -392,6 +451,43 @@ export default function InterviewPage() {
   const changeVideoDevice = async (deviceId: string) => {
     setSelectedVideoDevice(deviceId);
     await setupMediaStream();
+  };
+
+  // Improved function to refresh the stream
+  const refreshStream = async () => {
+    try {
+      // Stop any existing stream
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+
+      // Get fresh stream with appropriate constraints based on current states
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: hasCamera && cameraEnabled,
+      });
+
+      // Check if we got tracks
+      console.log(
+        "New stream tracks:",
+        stream.getTracks().map((t) => t.kind),
+      );
+
+      // Store stream
+      streamRef.current = stream;
+
+      // Update local video display using our helper function
+      if (localVideoRef.current) {
+        await displayVideoStream(stream, localVideoRef.current);
+      }
+
+      return (
+        stream.getAudioTracks().length > 0 || stream.getVideoTracks().length > 0
+      );
+    } catch (err) {
+      console.error("Failed to refresh stream:", err);
+      return false;
+    }
   };
 
   // Fixed function to start the interview
@@ -446,6 +542,11 @@ export default function InterviewPage() {
       
       // Wait a moment for UI to update
       await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Make sure our local video is visible in the new UI
+      if (localVideoRef.current && streamRef.current) {
+        await displayVideoStream(streamRef.current, localVideoRef.current);
+      }
       
       // Verify the video URL format
       let videoUrl = interview.interviewVideoUrl;
@@ -566,48 +667,6 @@ export default function InterviewPage() {
     } catch (err) {
       console.error("Error starting interview:", err);
       toast.error("Failed to start the interview: " + (err.message || "Unknown error"));
-    }
-  };
-
-  // Improved function to refresh the stream
-  const refreshStream = async () => {
-    try {
-      // Stop any existing stream
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-      }
-
-      // Get fresh stream
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: hasCamera,
-      });
-
-      // Check if we got tracks
-      console.log(
-        "New stream tracks:",
-        stream.getTracks().map((t) => t.kind),
-      );
-
-      // Store stream
-      streamRef.current = stream;
-
-      // Update local video display
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream;
-        try {
-          await localVideoRef.current.play();
-        } catch (e) {
-          console.warn("Could not autoplay refreshed stream:", e);
-        }
-      }
-
-      return (
-        stream.getAudioTracks().length > 0 || stream.getVideoTracks().length > 0
-      );
-    } catch (err) {
-      console.error("Failed to refresh stream:", err);
-      return false;
     }
   };
 
