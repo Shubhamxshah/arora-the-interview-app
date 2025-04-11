@@ -20,7 +20,7 @@ export default function Navbar() {
 
   return (
     <header className="relative z-50">
-      <div className="container mx-auto px-4">
+      <div className="container mx-auto px-4 mx-8">
         <div className="flex items-center justify-between py-6">
           <Link href="/" className="flex items-center space-x-2">
             <div className="h-10 w-10 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 flex items-center justify-center">
@@ -29,7 +29,7 @@ export default function Navbar() {
             <span className="text-white font-bold text-xl">InterviewPro</span>
           </Link>
 
-          <nav className="hidden md:flex items-center space-x-8">
+          <nav className="hidden lg:flex items-center space-x-8">
             {navItems.map((item) => (
               <Link key={item.name} href={item.href} className="text-white/80 hover:text-white transition-colors">
                 {item.name}
@@ -38,7 +38,7 @@ export default function Navbar() {
           </nav>
 
           <div className="hidden md:flex items-center space-x-4">
-                  <Button variant="ghost" onClick={() => signIn("google", { redirectTo: "/dashboard"})} className="text-white hover:bg-white/10 cursor-pointer w-full">
+                  <Button onClick={() => signIn("google", { redirectTo: "/dashboard"})} className="text-white bg-gradient-to-b from-cyan-500 to-emerald-500 hover:bg-white/10 cursor-pointer w-28">
                 Sign In
                   </Button>
             <Button className="bg-white text-indigo-900 hover:bg-white/90">Get Started</Button>
