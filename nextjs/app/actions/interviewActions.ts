@@ -194,19 +194,19 @@ async function processInterview(interviewId: string) {
 async function generateInterviewQuestions(resumeText: string, jobDescription: string): Promise<string[]> {
   try {
     const prompt = `
-      // I have a candidate's resume and a job description. Based on these, generate 5 interview questions:
-      //
-      // 1. A friendly introduction question (start with "Hi there! Hope you're well.")
-      // 2. Three technical or experience-based questions that match the candidate's skills with the job requirements
-      // 3. A friendly conclusion (end with "That's all we had for today. Congratulations on completing the interview successfully!")
-      //
-      // Format the output as a JSON array of 5 strings, one for each question. Keep each question under 30 words.
+      I have a candidate's resume and a job description. Based on these, generate 5 interview questions:
 
-      I have a candidate's resume and a job description. Based on these, generate 2 interview questions:
-      
-      1. it should be technical or experience-based questions that match the candidate's skills with the job requirements
-      
-      Format the output as a JSON array of a 2 strings. Keep question under 30 words.
+      1. A friendly introduction question (start with "Hi there! Hope you're well.")
+      2. Three technical or experience-based questions that match the candidate's skills with the job requirements
+      3. A friendly conclusion (end with "That's all we had for today. Congratulations on completing the interview successfully!")
+
+      Format the output as a JSON array of 5 strings, one for each question. Keep each question under 30 words.
+
+      // I have a candidate's resume and a job description. Based on these, generate 2 interview questions:
+      //
+      // 1. it should be technical or experience-based questions that match the candidate's skills with the job requirements
+      //
+      // Format the output as a JSON array of a 2 strings. Keep question under 30 words.
 
       Resume:
       ${resumeText.substring(0, 1500)}
