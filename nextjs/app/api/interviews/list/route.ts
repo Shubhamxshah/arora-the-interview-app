@@ -17,7 +17,8 @@ export async function GET() {
     const user = await prisma.user.findUnique({
       where: { email: session.user.email }
     });
-    
+  
+    console.log(user);
     if (!user) {
       return NextResponse.json(
         { error: "User not found" },
@@ -30,6 +31,8 @@ export async function GET() {
       where: { creatorId: user.id },
       orderBy: { createdAt: 'desc' }
     });
+
+    console.log(interviews)
     
     return NextResponse.json({
       interviews

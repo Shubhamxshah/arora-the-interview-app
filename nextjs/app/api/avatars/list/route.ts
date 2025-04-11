@@ -28,7 +28,9 @@ export async function GET() {
     
     const response = await fetch('https://os.gan.ai/v1/avatars/list', options);
     const data = await response.json();
-    
+   
+    console.log(data);
+
     return NextResponse.json({
       avatars: data.avatars_list || []
     });
