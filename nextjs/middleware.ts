@@ -15,7 +15,7 @@ export default auth(async (req) => {
   }
 
   if (!isLoggedIn && isPrivateRoute) {
-    return Response.redirect(`${process.env.PROJECT_URL}`);
+    return Response.redirect(`${process.env.NEXT_PUBLIC_APP_URL}`);
   }
 });
 
